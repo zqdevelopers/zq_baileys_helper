@@ -110,6 +110,12 @@ const { sendCards } = require('zqbaileys_helper');
 
 await sendCards(sock, jid, {
   text: 'Our picks',
+  // Optional header media: one of the following
+  // headerImageUrl: 'https://cdn.example/img1.jpg',
+  // headerVideoUrl: 'https://cdn.example/video1.mp4',
+  // headerImage: Buffer.from(...),
+  // headerVideo: Buffer.from(...),
+  // mediaCaption: 'Featured items',
   cards: [
     { id: 'card_a', title: 'Item A', body: 'Top seller' },
     { id: 'card_b', title: 'Item B', body: 'Hot deal' }

@@ -855,13 +855,26 @@ async function sendCards(sock, jid, data = {}, options = {}) {
   if (!sock) {
     throw new InteractiveValidationError('Socket is required', { context: 'sendCards' });
   }
-  const { text = '', footer = '', cards = [] } = data;
+  const { text = '', footer = '', cards = [], headerImageUrl, headerVideoUrl, headerImage, headerVideo, mediaCaption } = data;
   if (!Array.isArray(cards) || cards.length === 0) {
     throw new InteractiveValidationError('Cards payload invalid', { context: 'sendCards', errors: ['cards must be non-empty array'] });
   }
+  // Optionally send a header media message before the cards list.
+  try {
+    const caption = mediaCaption != null ? mediaCaption : text || '';
+    if (sock.sendMessage && (headerImageUrl || headerImage)) {
+      await sock.sendMessage(jid, { image: headerImage ? headerImage : { url: headerImageUrl }, caption }, options);
+    } else if (sock.sendMessage && (headerVideoUrl || headerVideo)) {
+      await sock.sendMessage(jid, { video: headerVideo ? headerVideo : { url: headerVideoUrl }, caption }, options);
+    }
+  } catch (e) {
+    console.warn('sendCards header media failed:', e?.message || e);
+  }
   const buttons = cards.map((c, i) => ({ id: c.id || ('card_' + (i + 1)), text: c.title || c.body || ('Card ' + (i + 1)) }));
   const bmButtons = normalizeButtonsForButtonsMessage(buttons);
-  const content = { buttonsMessage: { contentText: text, footerText: footer, buttons: bmButtons } };
+  // If we used the text as media caption, avoid duplicating in the buttons message.
+  const contentText = mediaCaption != null ? '' : text;
+  const content = { buttonsMessage: { contentText, footerText: footer, buttons: bmButtons } };
   return sendInteractiveMessage(sock, jid, content, options);
 }
 
