@@ -1,0 +1,21 @@
+{
+  "name": "zqbaileys_helper",
+  "version": "1.0.6",
+  "description": "This is a plugin to make baileys more interactive",
+  "homepage": "https://sendbulk.cloud",
+  "keywords": [
+    "Baileys",
+    "WhatsApp"
+  ],
+  "license": "ISC",
+  "author": "ZQ Developers",
+  "type": "commonjs",
+  "main": "export.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zqdevelopers/zq_baileys_helper.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
