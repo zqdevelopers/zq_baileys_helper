@@ -695,14 +695,17 @@ async function sendInteractiveMessage(sock, jid, content, options = {}) {
 
   // Step 3: Build the WAMessage manually.
   const userJid = sock.authState?.creds?.me?.id || sock.user?.id;
-  const fullMsg = generateWAMessageFromContent(jid, convertedContent, {
+  const baseOptions = {
     logger: sock.logger,
     userJid,
     messageId: generateMessageIDV2(userJid),
     timestamp: new Date(),
-    ...options,
-    AI: options.AI === true || options.ai === true ? true : options.AI
-  });
+    ...options
+  };
+  if (options.ai === true || options.AI === true) {
+    baseOptions.AI = true;
+  }
+  const fullMsg = generateWAMessageFromContent(jid, convertedContent, baseOptions);
 
   // Step 4: Inspect content to decide which additionalNodes to attach.
   const normalizedContent = normalizeMessageContent(fullMsg.message);
@@ -726,13 +729,14 @@ async function sendInteractiveMessage(sock, jid, content, options = {}) {
 
   // Step 5: Relay with injected nodes.
   const additionalAttributes = { ...(options.additionalAttributes || {}) };
-  if (options.ai === true || options.AI === true) additionalAttributes.AI = '1';
+  const aiEnabled = options.ai === true || options.AI === true;
   await relayMessage(jid, fullMsg.message, {
     messageId: fullMsg.key.id,
     useCachedGroupMetadata: options.useCachedGroupMetadata,
     additionalAttributes,
     statusJidList: options.statusJidList,
-    additionalNodes
+    additionalNodes,
+    ...(aiEnabled ? { AI: true } : {})
   });
 
   // Step 6 (optional): Emit to local event stream so client consumers receive it immediately.
