@@ -20,7 +20,7 @@ The enhanced functionality provided by the `zqbaileys_helper` package provides t
 ## Key Features
 
 - ✅ **No modifications** to WhiskeySockets or itsukichan folders
-- ✅ **Template functionality removed** as requested
+- ✅ **Template buttons supported** (simple + hydrated)
 - ✅ **Automatic binary node injection** for button messages
 - ✅ **Private chat support** (adds `bot` node with `biz_bot: '1'`)
 - ✅ **Group chat support** (adds only `biz` node)
@@ -102,6 +102,42 @@ await sendTemplateButtons(sock, jid, {
     { name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: 'Open', url: 'https://sendbulk.cloud' }) }
   ]
 }, { ai: true });
+```
+
+### Template Buttons (Hydrated)
+```javascript
+const { sendTemplateButtonsHydrated } = require('zqbaileys_helper');
+
+await sendTemplateButtonsHydrated(sock, jid, {
+  text: 'Hi its a template message',
+  footer: 'Footer text',
+  templateButtons: [
+    { index: 1, urlButton: { displayText: 'Open', url: 'https://sendbulk.cloud' } },
+    { index: 2, callButton: { displayText: 'Call', phoneNumber: '+1234567890' } },
+    { index: 3, quickReplyButton: { displayText: 'Quick reply', id: 'reply_1' } }
+  ]
+});
+```
+
+### List Messages
+```javascript
+const { sendListMessage } = require('zqbaileys_helper');
+
+await sendListMessage(sock, jid, {
+  text: 'This is a list',
+  footer: 'Footer text',
+  title: 'Amazing list title',
+  buttonText: 'View options',
+  sections: [
+    {
+      title: 'Section 1',
+      rows: [
+        { title: 'Option 1', rowId: 'option_1', description: 'First option' },
+        { title: 'Option 2', rowId: 'option_2' }
+      ]
+    }
+  ]
+});
 ```
 
 ### Cards (Carousel-like)
@@ -246,6 +282,25 @@ async function sendTemplateButtons(sock, jid, data = {}, options = {})
 - `data.buttons` Array of buttons (legacy quick replies or named CTA types)
 - Internally builds a `buttonsMessage` and uses the same binary node injection path
 
+#### sendTemplateButtonsHydrated
+```js
+async function sendTemplateButtonsHydrated(sock, jid, data = {}, options = {})
+```
+- `data.text` Body text
+- `data.footer` Optional footer
+- `data.templateButtons` Hydrated template button array (urlButton/callButton/quickReplyButton)
+- `data.headerMessage` Optional prepared header message (imageMessage/videoMessage/documentMessage/locationMessage)
+
+#### sendListMessage
+```js
+async function sendListMessage(sock, jid, data = {}, options = {})
+```
+- `data.text` Body text (list description)
+- `data.footer` Optional footer
+- `data.title` Optional title
+- `data.buttonText` Required button label
+- `data.sections` Required list sections array
+
 #### sendCards
 ```js
 async function sendCards(sock, jid, data = {}, options = {})
@@ -288,6 +343,7 @@ async function sendInteractiveMessage(sock, jid, content, options = {})
   - `additionalNodes` (Array) Prepend your own binary nodes (the function appends required interactive nodes after detection).
   - `additionalAttributes` (Object) Extra attributes for the root relay stanza.
   - `statusJidList`, `useCachedGroupMetadata` (advanced Baileys relay options).
+  - `mdPatch` (boolean) Set to `false` to skip the MD compatibility patch for buttons/list/interactive messages.
 
 #### What It Does Internally
 1. Calls `convertToInteractiveMessage(content)` if `interactiveButtons` exist, producing:

@@ -235,6 +235,30 @@ const EXAMPLE_PAYLOADS = {
       { name: 'cta_copy', buttonParamsJson: JSON.stringify({ display_text: 'Copy Code', copy_code: 'ABC123' }) }
     ],
     footer: 'Footer'
+  },
+  sendListMessage: {
+    text: 'This is a list',
+    footer: 'Footer text',
+    title: 'List title',
+    buttonText: 'Open list',
+    sections: [
+      {
+        title: 'Section 1',
+        rows: [
+          { title: 'Option 1', rowId: 'option_1', description: 'First option' },
+          { title: 'Option 2', rowId: 'option_2' }
+        ]
+      }
+    ]
+  },
+  sendTemplateButtonsHydrated: {
+    text: 'Hi its a template message',
+    footer: 'Footer text',
+    templateButtons: [
+      { index: 1, urlButton: { displayText: 'Open site', url: 'https://sendbulk.cloud' } },
+      { index: 2, callButton: { displayText: 'Call us', phoneNumber: '+1234567890' } },
+      { index: 3, quickReplyButton: { displayText: 'Quick reply', id: 'reply_1' } }
+    ]
   }
 };
 
@@ -432,6 +456,119 @@ function validateInteractiveMessageContent(content) {
     }
   });
   return { errors, warnings, valid: errors.length === 0 };
+}
+
+/**
+ * Patch interactive/list/button messages to improve MD compatibility.
+ * Mirrors the legacy patch used in whaileys to ensure proper rendering.
+ *
+ * @param {object} message WAMessage content.
+ * @returns {object} Patched or original message content.
+ */
+function patchMessageForMdIfRequired(message) {
+  if (!message || typeof message !== 'object') {
+    return message;
+  }
+  if (message.documentWithCaptionMessage?.message) {
+    return message;
+  }
+  const requiresPatch = !!(
+    message.buttonsMessage ||
+    message.listMessage ||
+    message.interactiveMessage
+  );
+  if (requiresPatch) {
+    return {
+      documentWithCaptionMessage: {
+        message: { ...message }
+      }
+    };
+  }
+  return message;
+}
+
+function validateListMessagePayload(data) {
+  const errors = [];
+  if (!data || typeof data !== 'object') {
+    return { valid: false, errors: ['payload must be an object'] };
+  }
+  if (!Array.isArray(data.sections) || data.sections.length === 0) {
+    errors.push('sections must be a non-empty array');
+  }
+  if (!data.buttonText || typeof data.buttonText !== 'string') {
+    errors.push('buttonText is mandatory and must be a string');
+  }
+  if (data.text != null && typeof data.text !== 'string') {
+    errors.push('text must be a string');
+  }
+  if (data.title != null && typeof data.title !== 'string') {
+    errors.push('title must be a string');
+  }
+  if (data.footer != null && typeof data.footer !== 'string') {
+    errors.push('footer must be a string');
+  }
+  if (data.listType != null && typeof data.listType !== 'number') {
+    errors.push('listType must be a number');
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function normalizeTemplateButtons(buttons = []) {
+  const errors = [];
+  if (!Array.isArray(buttons)) {
+    return { valid: false, errors: ['templateButtons must be an array'], cleaned: [] };
+  }
+  const cleaned = buttons.map((b, i) => {
+    if (!b || typeof b !== 'object') {
+      errors.push(`templateButtons[${i}] must be an object`);
+      return b;
+    }
+    const hasUrl = !!b.urlButton;
+    const hasCall = !!b.callButton;
+    const hasQuick = !!b.quickReplyButton;
+    const typeCount = [hasUrl, hasCall, hasQuick].filter(Boolean).length;
+    if (!typeCount) {
+      errors.push(`templateButtons[${i}] must include urlButton, callButton, or quickReplyButton`);
+    } else if (typeCount > 1) {
+      errors.push(`templateButtons[${i}] must include only one button type`);
+    }
+    const next = { ...b };
+    if (next.index == null) {
+      next.index = i + 1;
+    }
+    if (typeof next.index !== 'number') {
+      errors.push(`templateButtons[${i}] index must be a number`);
+    }
+    if (hasUrl) {
+      const { displayText, url } = next.urlButton || {};
+      if (!displayText || typeof displayText !== 'string') {
+        errors.push(`templateButtons[${i}] urlButton.displayText is required`);
+      }
+      if (!url || typeof url !== 'string') {
+        errors.push(`templateButtons[${i}] urlButton.url is required`);
+      }
+    }
+    if (hasCall) {
+      const { displayText, phoneNumber } = next.callButton || {};
+      if (!displayText || typeof displayText !== 'string') {
+        errors.push(`templateButtons[${i}] callButton.displayText is required`);
+      }
+      if (!phoneNumber || typeof phoneNumber !== 'string') {
+        errors.push(`templateButtons[${i}] callButton.phoneNumber is required`);
+      }
+    }
+    if (hasQuick) {
+      const { displayText, id } = next.quickReplyButton || {};
+      if (!displayText || typeof displayText !== 'string') {
+        errors.push(`templateButtons[${i}] quickReplyButton.displayText is required`);
+      }
+      if (!id || typeof id !== 'string') {
+        errors.push(`templateButtons[${i}] quickReplyButton.id is required`);
+      }
+    }
+    return next;
+  });
+  return { valid: errors.length === 0, errors, cleaned };
 }
 
 /**
@@ -727,6 +864,13 @@ async function sendInteractiveMessage(sock, jid, content, options = {}) {
     });
   }
 
+  if (options.mdPatch !== false) {
+    const patched = patchMessageForMdIfRequired(fullMsg.message);
+    if (patched !== fullMsg.message) {
+      fullMsg.message = patched;
+    }
+  }
+
   // Step 5: Relay with injected nodes.
   const additionalAttributes = { ...(options.additionalAttributes || {}) };
   const aiEnabled = options.ai === true || options.AI === true;
@@ -814,6 +958,71 @@ async function sendInteractiveButtonsBasic(sock, jid, data = {}, options = {}) {
   return sendInteractiveMessage(sock, jid, payload, options);
 }
 
+async function sendListMessage(sock, jid, data = {}, options = {}) {
+  if (!sock) {
+    throw new InteractiveValidationError('Socket is required', { context: 'sendListMessage' });
+  }
+  const strict = validateListMessagePayload(data);
+  if (!strict.valid) {
+    throw new InteractiveValidationError('List message payload invalid', {
+      context: 'sendListMessage.validateListMessagePayload',
+      errors: strict.errors,
+      example: EXAMPLE_PAYLOADS.sendListMessage
+    });
+  }
+  const listMessage = {
+    title: data.title,
+    description: data.text,
+    buttonText: data.buttonText,
+    listType: typeof data.listType === 'number' ? data.listType : 1,
+    sections: data.sections,
+    footerText: data.footer
+  };
+  if (data.productListInfo) {
+    listMessage.productListInfo = data.productListInfo;
+  }
+  if (data.contextInfo) {
+    listMessage.contextInfo = data.contextInfo;
+  }
+  return sendInteractiveMessage(sock, jid, { listMessage }, options);
+}
+
+async function sendTemplateButtonsHydrated(sock, jid, data = {}, options = {}) {
+  if (!sock) {
+    throw new InteractiveValidationError('Socket is required', { context: 'sendTemplateButtonsHydrated' });
+  }
+  const templateButtons = data.templateButtons || data.buttons || [];
+  const { valid, errors, cleaned } = normalizeTemplateButtons(templateButtons);
+  if (!valid) {
+    throw new InteractiveValidationError('Template buttons payload invalid', {
+      context: 'sendTemplateButtonsHydrated.normalizeTemplateButtons',
+      errors,
+      example: EXAMPLE_PAYLOADS.sendTemplateButtonsHydrated
+    });
+  }
+
+  const hydratedTemplate = {
+    hydratedButtons: cleaned
+  };
+  if (data.text) {
+    hydratedTemplate.hydratedContentText = data.text;
+  }
+  if (data.footer) {
+    hydratedTemplate.hydratedFooterText = data.footer;
+  }
+  if (data.headerMessage && typeof data.headerMessage === 'object') {
+    Object.assign(hydratedTemplate, data.headerMessage);
+  }
+
+  const content = {
+    templateMessage: {
+      fourRowTemplate: hydratedTemplate,
+      hydratedTemplate: hydratedTemplate
+    }
+  };
+  return sendInteractiveMessage(sock, jid, content, options);
+}
+
 function normalizeButtonsForButtonsMessage(buttons = []) {
   return buttons.map((b, i) => {
     if (b && b.buttonId && b.buttonText && b.buttonText.displayText) {
@@ -884,15 +1093,20 @@ async function sendCards(sock, jid, data = {}, options = {}) {
 
 module.exports = { 
   sendButtons: sendInteractiveButtonsBasic,
+  sendListMessage,
   sendTemplateButtons,
+  sendTemplateButtonsHydrated,
   sendCards,
   sendInteractiveMessage,
   getButtonType,
   getButtonArgs,
+  patchMessageForMdIfRequired,
   InteractiveValidationError,
   // Export validators for external pre-flight usage / testing.
   validateAuthoringButtons,
   validateInteractiveMessageContent,
+  validateListMessagePayload,
   validateSendButtonsPayload,
-  validateSendInteractiveMessagePayload
+  validateSendInteractiveMessagePayload,
+  normalizeTemplateButtons
 };
